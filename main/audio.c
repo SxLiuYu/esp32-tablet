@@ -42,7 +42,7 @@ static void _capture_task(void *arg)
     i2s_std_slot_config_t slot = I2S_STD_PHILIPS_SLOT_DEFAULT_CONFIG(
         I2S_DATA_BIT_WIDTH_16BIT, I2S_SLOT_MODE_MONO);
 
-    i2s_std_clk_cfg_t clk = I2S_STD_CLK_DEFAULT_CONFIG(16000);
+    i2s_std_clk_config_t clk = I2S_STD_CLK_DEFAULT_CONFIG(16000);
 
     i2s_std_gpio_config_t gpio = {
         .bck_io_num = 26,

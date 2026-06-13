@@ -57,8 +57,10 @@ static void button_handler(int key, int pressed)
 void app_main(void)
 {
     ESP_LOGI(TAG, "=== yuanfang-brain ESP32 Firmware ===");
-    ESP_LOGI(TAG, "Chip: %s, Rev %d, %dKB SRAM",
-             CONFIG_IDF_TARGET, esp_chip_info().model, esp_chip_info().data->psram_size / 1024);
+    esp_chip_info_t chip;
+    esp_chip_info(&chip);
+    ESP_LOGI(TAG, "Chip: %s, cores=%d, rev=%d",
+             CONFIG_IDF_TARGET, chip.cores, chip.revision);
 
     ESP_ERROR_CHECK(nvs_flash_init());
     ESP_ERROR_CHECK(esp_netif_init());
