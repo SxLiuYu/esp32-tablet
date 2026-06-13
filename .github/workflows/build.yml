@@ -1,0 +1,43 @@
+name: Build ESP32 Tablet Firmware
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: espressif/esp-idf-v5.3-ci-tools@main
+        with:
+          esp_idf_version: v5.3.2
+          target: esp32
+
+      - name: Apply yuanfang-brain WS URL
+        run: |
+          echo "CONFIG_XIAOZHI_DEFAULT_WS_URL=\"ws://192.168.1.10:7104\"" >> sdkconfig.defaults
+
+      - name: Build
+        run: |
+          idf.py set-target esp32
+          idf.py build
+
+      - name: Upload firmware artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: esp32-tablet-firmware
+          path: |
+            build/*.bin
+            build/bootloader/*.bin
+            build/partition_table/*.bin
+            build/flash_args
+            build/flasher_args.json
+          if-no-files-found: error
+          retention-days: 14
