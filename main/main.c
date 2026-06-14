@@ -1,12 +1,15 @@
 /* yuanfang-brain ESP32 Voice Frontend
  * Hardware: WROOM-32 (520KB SRAM, no PSRAM) + 1.54" ST7789 240x240 SPI
  * Protocol: ws://192.168.1.10:7103/ws/audio
+ *
+ * Modified 2026-06-14: include esp_chip_info.h, drop .revision (removed in v5.3.2)
  */
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_system.h"
 #include "esp_log.h"
 #include "esp_sleep.h"
+#include "esp_chip_info.h"
 #include "nvs_flash.h"
 #include "esp_netif.h"
 #include "esp_event.h"
@@ -35,18 +38,18 @@ static void button_handler(int key, int pressed)
     ESP_LOGI(TAG, "key %d pressed", key);
     switch (key) {
         case KEY_BOOT:
-            rgb_set_color(0x0000FF); // blue = listening
+            rgb_set_color(0x0000FF);
             ui_set_state(UI_STATE_LISTENING);
             ws_client_send_audio_start();
             break;
         case KEY_VOL_UP:
-            rgb_set_color(0x00FF00); // green
+            rgb_set_color(0x00FF00);
             break;
         case KEY_VOL_DOWN:
-            rgb_set_color(0xFF0000); // red
+            rgb_set_color(0xFF0000);
             break;
         case KEY_POW:
-            rgb_set_color(0xFFFF00); // yellow
+            rgb_set_color(0xFFFF00);
             break;
         case KEY_RGB:
             rgb_demo();
@@ -59,8 +62,9 @@ void app_main(void)
     ESP_LOGI(TAG, "=== yuanfang-brain ESP32 Firmware ===");
     esp_chip_info_t chip;
     esp_chip_info(&chip);
-    ESP_LOGI(TAG, "Chip: %s, cores=%d, rev=%d",
-             CONFIG_IDF_TARGET, chip.cores, chip.revision);
+    /* v5.3.2: chip.revision field removed - use esp_chip_info() to print via feature flags */
+    ESP_LOGI(TAG, "Chip: %s, cores=%d, features=0x%08lx",
+             CONFIG_IDF_TARGET, chip.cores, (unsigned long)chip.features);
 
     ESP_ERROR_CHECK(nvs_flash_init());
     ESP_ERROR_CHECK(esp_netif_init());
@@ -75,7 +79,7 @@ void app_main(void)
     ui_init();
     ui_set_state(UI_STATE_IDLE);
 
-    led_effect(0x0000FF, 200); // blue flash = boot ok
+    led_effect(0x0000FF, 200);
 
     wifi_init_sta();
 
@@ -86,11 +90,11 @@ void app_main(void)
     }
 
     if (wifi_is_connected()) {
-        led_effect(0x00FF00, 300); // green = wifi ok
+        led_effect(0x00FF00, 300);
         ws_client_init();
         ui_set_state(UI_STATE_READY);
     } else {
-        led_effect(0xFF0000, 500); // red = no wifi
+        led_effect(0xFF0000, 500);
         ESP_LOGW(TAG, "WiFi not connected, starting AP mode...");
         wifi_init_softap();
         ui_set_state(UI_STATE_AP_MODE);
