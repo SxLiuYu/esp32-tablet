@@ -1,7 +1,8 @@
 /* ST7789 240x240 SPI 1.54" display driver
  * Classic ESP32: framebuffer in internal RAM (no PSRAM)
- * Color depth: RGB565
- * LVGL used for rendering
+ * LVGL v9 (IDF v5.3.2)
+ *
+ * Modified 2026-06-14: rewrite using LVGL v9 + driver/gpio.h include
  */
 #include "display.h"
 #include <string.h>
@@ -21,11 +22,7 @@ static const char *TAG = "display";
 #define LCD_PIN_DC   21
 #define LCD_PIN_RST  22
 
-/* LVGL display buffer - half screen (120x240x2 = 57600 bytes) to save memory */
-static lv_draw_buf_t s_disp_buf;
-static uint16_t s_fb[240 * 120] __attribute__((section(".dram1.data"))); // 57.6KB
-
-/* Minimal ST7789 send_color using spi_master */
+static lv_display_t *s_disp = NULL;
 static spi_device_handle_t s_spi;
 
 static void _st7789_send_cmd(uint8_t cmd)
@@ -65,7 +62,9 @@ static void _st7789_init(void)
     spi_bus_initialize(LCD_HOST, &bus, SPI_DMA_CH_AUTO);
     spi_bus_add_device(LCD_HOST, &dev, &s_spi);
 
+    gpio_reset_pin(LCD_PIN_DC);
     gpio_set_direction(LCD_PIN_DC, GPIO_MODE_OUTPUT);
+    gpio_reset_pin(LCD_PIN_RST);
     gpio_set_direction(LCD_PIN_RST, GPIO_MODE_OUTPUT);
 
     gpio_set_level(LCD_PIN_RST, 0);
@@ -79,7 +78,7 @@ static void _st7789_init(void)
     _st7789_send_cmd(0x2A); _st7789_send_data((uint8_t[]){0,0,0,239}, 4);
     _st7789_send_cmd(0x2B); _st7789_send_data((uint8_t[]){0,0,0,239}, 4);
     _st7789_send_cmd(0x36); _st7789_send_data((uint8_t[]){0x00}, 1);
-    _st7789_send_cmd(0x3A); _st7789_send_data((uint8_t[]){0x55}, 1); // RGB565
+    _st7789_send_cmd(0x3A); _st7789_send_data((uint8_t[]){0x55}, 1);
     _st7789_send_cmd(0xB2); _st7789_send_data((uint8_t[]){0x0C,0x0C,0x00,0x33,0x33}, 5);
     _st7789_send_cmd(0xB7); _st7789_send_data((uint8_t[]){0x35}, 1);
     _st7789_send_cmd(0xBB); _st7789_send_data((uint8_t[]){0x28}, 1);
@@ -94,7 +93,7 @@ static void _st7789_init(void)
     ESP_LOGI(TAG, "ST7789 init done");
 }
 
-static void _lv_flush_cb(lv_display_t *drv, const lv_area_t *area, lv_color16_t *color_p)
+static void _lv_flush_cb(lv_display_t *disp, const lv_area_t *area, uint8_t *px_map)
 {
     int x1 = area->x1, x2 = area->x2;
     int y1 = area->y1, y2 = area->y2;
@@ -108,11 +107,11 @@ static void _lv_flush_cb(lv_display_t *drv, const lv_area_t *area, lv_color16_t 
     size_t len = (x2 - x1 + 1) * (y2 - y1 + 1) * 2;
     spi_transaction_t t = {
         .length = len * 8,
-        .tx_buffer = color_p,
+        .tx_buffer = px_map,
     };
     gpio_set_level(LCD_PIN_DC, 1);
     spi_device_transmit(s_spi, &t);
-    lv_display_flush_ready(drv);
+    lv_display_flush_ready(disp);
 }
 
 void display_init(void)
@@ -120,15 +119,19 @@ void display_init(void)
     ESP_LOGI(TAG, "display init ST7789 240x240");
     _st7789_init();
     lv_init();
-    lv_draw_buf_init(&s_disp_buf, s_fb, NULL, 240 * 120);
 
-    static lv_display_t disp_drv;
-    lv_display_init(&disp_drv);
-    lv_display_set_hor_res(&disp_drv, 240); (void)0; // hor_res = 240;
-    lv_display_set_ver_res(&disp_drv, 240); (void)0; // ver_res = 240;
-    lv_display_set_flush_cb(&disp_drv, _lv_flush_cb);
-    lv_display_set_draw_buffers(&disp_drv, &s_disp_buf, NULL);
-    lv_display_register(&disp_drv);
+    /* LVGL v9: display is created via lv_display_create(W, H) - no static struct */
+    s_disp = lv_display_create(240, 240);
+    if (!s_disp) {
+        ESP_LOGE(TAG, "lv_display_create failed - display disabled");
+        return;
+    }
 
+    /* Allocate a small draw buffer (half screen) in internal RAM */
+    static uint16_t s_fb[240 * 120]; // 57.6KB
+    lv_display_set_buffers(s_disp, s_fb, NULL, sizeof(s_fb),
+                           LV_DISPLAY_RENDER_MODE_PARTIAL);
+
+    lv_display_set_flush_cb(s_disp, _lv_flush_cb);
     ESP_LOGI(TAG, "LVGL display registered (57KB fb, half-screen)");
 }
