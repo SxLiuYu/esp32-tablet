@@ -10,6 +10,7 @@
 #include "esp_log.h"
 #include "driver/spi_master.h"
 #include "lvgl.h"
+#include "driver/gpio.h"
 
 static const char *TAG = "display";
 
@@ -21,7 +22,7 @@ static const char *TAG = "display";
 #define LCD_PIN_RST  22
 
 /* LVGL display buffer - half screen (120x240x2 = 57600 bytes) to save memory */
-static lv_disp_draw_buf_t s_disp_buf;
+static lv_draw_buf_t s_disp_buf;
 static uint16_t s_fb[240 * 120] __attribute__((section(".dram1.data"))); // 57.6KB
 
 /* Minimal ST7789 send_color using spi_master */
@@ -32,7 +33,7 @@ static void _st7789_send_cmd(uint8_t cmd)
     spi_transaction_t t = {
         .length = 8,
         .tx_data = {cmd},
-        .flags = SPI_TRANS_USE_TX_DATA,
+        .flags = SPI_TRANS_USE_TXDATA,
     };
     gpio_set_level(LCD_PIN_DC, 0);
     spi_device_transmit(s_spi, &t);
@@ -93,7 +94,7 @@ static void _st7789_init(void)
     ESP_LOGI(TAG, "ST7789 init done");
 }
 
-static void _lv_flush_cb(lv_disp_drv_t *drv, const lv_area_t *area, lv_color16_t *color_p)
+static void _lv_flush_cb(lv_display_t *drv, const lv_area_t *area, lv_color16_t *color_p)
 {
     int x1 = area->x1, x2 = area->x2;
     int y1 = area->y1, y2 = area->y2;
@@ -111,8 +112,7 @@ static void _lv_flush_cb(lv_disp_drv_t *drv, const lv_area_t *area, lv_color16_t
     };
     gpio_set_level(LCD_PIN_DC, 1);
     spi_device_transmit(s_spi, &t);
-    lv_disp_flush_ready(drv);
-    (void)drv;
+    lv_display_flush_ready(drv);
 }
 
 void display_init(void)
@@ -120,15 +120,15 @@ void display_init(void)
     ESP_LOGI(TAG, "display init ST7789 240x240");
     _st7789_init();
     lv_init();
-    lv_disp_draw_buf_init(&s_disp_buf, s_fb, NULL, 240 * 120);
+    lv_draw_buf_init(&s_disp_buf, s_fb, NULL, 240 * 120);
 
-    static lv_disp_drv_t disp_drv;
-    lv_disp_drv_init(&disp_drv);
-    disp_drv.hor_res = 240;
-    disp_drv.ver_res = 240;
-    disp_drv.flush_cb = _lv_flush_cb;
-    disp_drv.draw_buf = &s_disp_buf;
-    lv_disp_drv_register(&disp_drv);
+    static lv_display_t disp_drv;
+    lv_display_init(&disp_drv);
+    lv_display_set_hor_res(&disp_drv, 240); (void)0; // hor_res = 240;
+    lv_display_set_ver_res(&disp_drv, 240); (void)0; // ver_res = 240;
+    lv_display_set_flush_cb(&disp_drv, _lv_flush_cb);
+    lv_display_set_draw_buffers(&disp_drv, &s_disp_buf, NULL);
+    lv_display_register(&disp_drv);
 
     ESP_LOGI(TAG, "LVGL display registered (57KB fb, half-screen)");
 }
